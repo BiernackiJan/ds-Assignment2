@@ -8,6 +8,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -22,36 +23,29 @@ export class EDAAppStack extends cdk.Stack {
       publicReadAccess: false,
     });
 
-
-    // Dead Letter Queues
-    const imageProcessDLQ = new sqs.Queue(this, "ImageProcessDLQ", {
-      retentionPeriod: cdk.Duration.days(14),
+    const badImagesQueue = new sqs.Queue(this, "bad-image-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(5),
     });
-
-    const mailerDLQ = new sqs.Queue(this, "MailerDLQ", {
-      retentionPeriod: cdk.Duration.days(14),
-    });
-
 
     const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
       receiveMessageWaitTime: cdk.Duration.seconds(5),
       deadLetterQueue: {
-        queue: imageProcessDLQ,
-        maxReceiveCount: 3, // Retry 3 times before sending to DLQ
+        queue: badImagesQueue,
+        maxReceiveCount: 1,
       },
     });
 
     const mailerQ = new sqs.Queue(this, "mailer-queue", {
       receiveMessageWaitTime: cdk.Duration.seconds(10),
-      deadLetterQueue: {
-        queue: mailerDLQ,
-        maxReceiveCount: 3, // Retry 3 times before sending to DLQ
-      },
     });
 
     const newImageTopic = new sns.Topic(this, "NewImageTopic", {
       displayName: "New Image topic",
     }); 
+
+    const regectionMailerQ = new sqs.Queue(this, "regection-mailer-queue", {
+      receiveMessageWaitTime: cdk.Duration.seconds(10),
+    });
     
 
     // Lambda functions
@@ -74,6 +68,20 @@ export class EDAAppStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/mailer.ts`,
     });
 
+    const rejectionMailerFn = new lambdanode.NodejsFunction(this, "rejectionMailer", {
+      runtime: lambda.Runtime.NODEJS_16_X,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(3),
+      entry: `${__dirname}/../lambdas/rejectionMailer.ts`,
+    });
+
+    const badImagesHandleFn = new NodejsFunction(this, "badImagesHandle", {
+      runtime: lambda.Runtime.NODEJS_16_X,
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(10),
+      entry: `${__dirname}/../lambdas/badImagesHandle.ts`,
+    });
+
     // S3 --> SQS
     imagesBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
@@ -84,7 +92,17 @@ export class EDAAppStack extends cdk.Stack {
       new subs.SqsSubscription(imageProcessQueue)
     );
 
-    newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
+    newImageTopic.addSubscription(
+      new subs.SqsSubscription(mailerQ)
+    );
+
+    newImageTopic.addSubscription(
+      new subs.SqsSubscription(regectionMailerQ)
+    );
+
+    newImageTopic.addSubscription(
+      new subs.SqsSubscription(badImagesQueue)
+    );
 
    // SQS --> Lambda
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue , {
@@ -97,12 +115,27 @@ export class EDAAppStack extends cdk.Stack {
       maxBatchingWindow: cdk.Duration.seconds(5),
     }); 
 
+    const regectImageEventSource = new events.SqsEventSource(regectionMailerQ, {
+      batchSize: 5,
+      maxBatchingWindow: cdk.Duration.seconds(5),
+    });
+
+    const badImageEventSource = new events.SqsEventSource(badImagesQueue, {
+      batchSize: 5,
+      maxBatchingWindow: cdk.Duration.seconds(5),
+    });
+
+
+
     processImageFn.addEventSource(newImageEventSource);
     mailerFn.addEventSource(newImageMailEventSource);
+    rejectionMailerFn.addEventSource(regectImageEventSource);
+    badImagesHandleFn.addEventSource(badImageEventSource);
+
 
     // Permissions
 
-    imagesBucket.grantRead(processImageFn);
+    imagesBucket.grantReadWrite(processImageFn);
 
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -115,6 +148,20 @@ export class EDAAppStack extends cdk.Stack {
         resources: ["*"],
       })
     );
+
+    rejectionMailerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ses:SendEmail",
+          "ses:SendRawEmail",
+          "ses:SendTemplatedEmail",
+        ],
+        resources: ["*"],
+      })
+    );
+
+
 
 
     // Output
