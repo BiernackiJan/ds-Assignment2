@@ -11,12 +11,23 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+
+
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class EDAAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+
+    //DynamoDB Table
+    const imageTable = new dynamodb.Table(this, "ImageTable", {
+      partitionKey: { name: "fileName", type: dynamodb.AttributeType.STRING },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
 
     const imagesBucket = new s3.Bucket(this, "images", {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -59,6 +70,7 @@ export class EDAAppStack extends cdk.Stack {
         deadLetterQueueEnabled: true,
         environment: {
           BAD_IMAGES_QUEUE: badImagesQueue.queueUrl,
+          IMAGE_TABLE_NAME: imageTable.tableName,
           },
       }
     );
@@ -137,9 +149,9 @@ export class EDAAppStack extends cdk.Stack {
 
 
     // Permissions
-
     imagesBucket.grantReadWrite(processImageFn);
     badImagesQueue.grantSendMessages(processImageFn);
+    imageTable.grantWriteData(processImageFn);
 
 
     mailerFn.addToRolePolicy(
