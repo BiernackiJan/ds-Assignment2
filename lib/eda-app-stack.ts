@@ -8,6 +8,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
+import { Duration } from "aws-cdk-lib";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import { Construct } from "constructs";
@@ -24,15 +25,11 @@ export class EDAAppStack extends cdk.Stack {
     });
 
     const badImagesQueue = new sqs.Queue(this, "bad-image-queue", {
-      receiveMessageWaitTime: cdk.Duration.seconds(5),
+      retentionPeriod: Duration.minutes(10),
     });
 
     const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
-      receiveMessageWaitTime: cdk.Duration.seconds(5),
-      deadLetterQueue: {
-        queue: badImagesQueue,
-        maxReceiveCount: 1,
-      },
+      receiveMessageWaitTime: cdk.Duration.seconds(10),
     });
 
     const mailerQ = new sqs.Queue(this, "mailer-queue", {
@@ -58,6 +55,11 @@ export class EDAAppStack extends cdk.Stack {
         entry: `${__dirname}/../lambdas/processImage.ts`,
         timeout: cdk.Duration.seconds(15),
         memorySize: 128,
+        deadLetterQueue: mailerQ, 
+        deadLetterQueueEnabled: true,
+        environment: {
+          BAD_IMAGES_QUEUE: badImagesQueue.queueUrl,
+          },
       }
     );
 
@@ -76,6 +78,7 @@ export class EDAAppStack extends cdk.Stack {
     });
 
     const badImagesHandleFn = new NodejsFunction(this, "badImagesHandle", {
+      architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_16_X,
       memorySize: 128,
       timeout: cdk.Duration.seconds(10),
@@ -136,6 +139,8 @@ export class EDAAppStack extends cdk.Stack {
     // Permissions
 
     imagesBucket.grantReadWrite(processImageFn);
+    badImagesQueue.grantSendMessages(processImageFn);
+
 
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
