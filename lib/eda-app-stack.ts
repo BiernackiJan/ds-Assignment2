@@ -75,6 +75,16 @@ export class EDAAppStack extends cdk.Stack {
       }
     );
 
+    const updateTableFn = new lambdanode.NodejsFunction(this, "UpdateTableFunction", {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      entry: `${__dirname}/../lambdas/updateTable.ts`,
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 128,
+      environment: {
+        TABLE_NAME: imageTable.tableName,
+      },
+    });
+
     const mailerFn = new lambdanode.NodejsFunction(this, "mailer-function", {
       runtime: lambda.Runtime.NODEJS_16_X,
       memorySize: 1024,
@@ -119,6 +129,10 @@ export class EDAAppStack extends cdk.Stack {
       new subs.SqsSubscription(badImagesQueue)
     );
 
+    newImageTopic.addSubscription(
+      new subs.LambdaSubscription(updateTableFn)
+    );
+
    // SQS --> Lambda
     const newImageEventSource = new events.SqsEventSource(imageProcessQueue , {
       batchSize: 5,
@@ -152,6 +166,8 @@ export class EDAAppStack extends cdk.Stack {
     imagesBucket.grantReadWrite(processImageFn);
     badImagesQueue.grantSendMessages(processImageFn);
     imageTable.grantWriteData(processImageFn);
+    imageTable.grantWriteData(updateTableFn);
+
 
 
     mailerFn.addToRolePolicy(
@@ -185,6 +201,10 @@ export class EDAAppStack extends cdk.Stack {
     
     new cdk.CfnOutput(this, "bucketName", {
       value: imagesBucket.bucketName,
+    });
+
+    new cdk.CfnOutput(this, "NewImageTopicArn", {
+      value: newImageTopic.topicArn,
     });
   }
 }
