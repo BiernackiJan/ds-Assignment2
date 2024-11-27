@@ -10,7 +10,6 @@ import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-
 import { Construct } from "constructs";
 
 export class EDAAppStack extends cdk.Stack {
@@ -154,7 +153,6 @@ export class EDAAppStack extends cdk.Stack {
     imageTable.grantWriteData(updateTableFn);
 
 
-  
     mailerFn.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,

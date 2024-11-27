@@ -1,4 +1,3 @@
-//refactor to rejection mailer instead of confirmation.
 import { SQSHandler } from "aws-lambda";
 import { SES_EMAIL_FROM, SES_EMAIL_TO, SES_REGION } from "../env";
 import {
@@ -31,9 +30,7 @@ export const handler: SQSHandler = async (event: any) => {
       console.log("Record body ", JSON.stringify(snsMessage));
       for (const messageRecord of snsMessage.Records) {
         const s3e = messageRecord.s3;
-        const srcBucket = s3e.bucket.name;
-        // Object key may have spaces or unicode non-ASCII characters.
-        const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
+
         try {
           if(!s3e.object.key.endsWith(".jpeg") && !s3e.object.key.endsWith(".png")) {
           console.log("Rejection Email " + s3e.object.key);
@@ -49,7 +46,6 @@ export const handler: SQSHandler = async (event: any) => {
         }
         } catch (error: unknown) {
           console.log("ERROR is: ", error);
-          // return;
         }
       }
     }
@@ -67,10 +63,6 @@ function sendEmailParams({ name, email, message }: ContactDetails) {
           Charset: "UTF-8",
           Data: getHtmlContent({ name, email, message }),
         },
-        // Text: {.           // For demo purposes
-        //   Charset: "UTF-8",
-        //   Data: getTextContent({ name, email, message }),
-        // },
       },
       Subject: {
         Charset: "UTF-8",

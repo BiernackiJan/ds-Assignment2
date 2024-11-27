@@ -51,14 +51,11 @@ export const handler: SQSHandler = async (event) => {
       const recordBody = JSON.parse(record.body);
       const snsMessage = JSON.parse(recordBody.Message);
 
-      console.log(`SNS Message Record: ${JSON.stringify(snsMessage.Records)}`);
 
       if (snsMessage.Records) {
         for (const messageRecord of snsMessage.Records) {
           const s3e = messageRecord.s3;
           const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
-
-          console.log(`SNS Message Record: ${JSON.stringify(messageRecord)}`);
 
           if(messageRecord.eventName == "ObjectCreated:Put") {
             if (isValidImage(srcKey)) {
@@ -72,8 +69,8 @@ export const handler: SQSHandler = async (event) => {
             console.log(`Deleted image detected: ${srcKey}`);
             await ddbClient.send(
               new DeleteCommand({
-                TableName: imageTableName, // Corrected to use the table name
-                Key: { fileName: srcKey }, // Ensure the key structure matches your DynamoDB schema
+                TableName: imageTableName, 
+                Key: { fileName: srcKey }, 
               })
             );
           } else {
