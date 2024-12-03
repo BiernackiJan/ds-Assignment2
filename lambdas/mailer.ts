@@ -35,6 +35,9 @@ export const handler: SQSHandler = async (event: any) => {
         const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
 
         try {
+
+          if(s3e.object.key.endsWith(".jpeg") || s3e.object.key.endsWith(".png")) {
+          console.log("Email " + s3e.object.key);
           const { name, email, message }: ContactDetails = {
             name: "The Photo Album",
             email: SES_EMAIL_FROM,
@@ -42,9 +45,11 @@ export const handler: SQSHandler = async (event: any) => {
           };
           const params = sendEmailParams({ name, email, message });
           await client.send(new SendEmailCommand(params));
+        }
         } catch (error: unknown) {
           console.log("ERROR is: ", error);
         }
+        
       }
     }
   }
